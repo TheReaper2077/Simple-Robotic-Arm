@@ -57,9 +57,12 @@ void ArmControl::ImGuiLayer() {
 		ImGui::DragFloat("Hand X", &self->angle[3], 0.1f, 0.0f, 180.0f, "%.2f");
 		ImGui::DragFloat("Hand Y", &self->angle[4], 0.1f, 0.0f, 180.0f, "%.2f");
 		ImGui::DragFloat("Gripper", &self->angle[5], 0.1f, 0.0f, 180.0f, "%.2f");
-		// if (ImGui::Button("Close Gripper")) {
-
-		// }
+		if (ImGui::Button("Close Gripper")) {
+			self->angle[5] = 10;
+		}
+		if (ImGui::Button("Open Gripper")) {
+			self->angle[5] = 90;
+		}
 
 		ImGui::Spacing();
 
@@ -95,7 +98,7 @@ void ArmControl::ImGuiLayer() {
 		if (ImGui::Button("PLAY")) {
 			self->play_state = PLAYING;
 		}
-		if (ImGui::Button("PAUS")) {
+		if (ImGui::Button("PAUSE")) {
 			self->play_state = PAUSED;
 		}
 		if (ImGui::Button("STOP")) {
@@ -110,14 +113,10 @@ void ArmControl::ImGuiLayer() {
 
 			int& idx = self->num_saved;
 
-			self->saved_angles[idx][0] = self->angle[0];
-			self->saved_angles[idx][1] = self->angle[1];
-			self->saved_angles[idx][2] = self->angle[2];
-			self->saved_angles[idx][3] = self->angle[3];
-			self->saved_angles[idx][4] = self->angle[4];
-			self->saved_angles[idx][5] = self->angle[5];
+			for (int i = 0; i < 6; i++)
+				self->saved_angles[idx][i] = self->angle[i];
 
-			std::cout << idx << '\n';
+			// std::cout << idx << '\n';
 
 			idx++;
 		}
@@ -128,10 +127,20 @@ void ArmControl::ImGuiLayer() {
 
 		ImGui::End();
 	}
+
+	if (ImGui::Begin("Positions")) {
+		for (auto& pair: self->positions_store) {
+			if (ImGui::Selectable(pair.first.c_str())) {
+
+			}
+		}
+
+		ImGui::End();
+	}
 }
 
 float progress_len = 500, progress_iter = 1 / progress_len;
-static float prev_angle[6];
+static float prev_angle[6], next_angle[6];
 
 void ArmControl::Update() {
 	IKUpdate(self->target);
@@ -143,26 +152,19 @@ void ArmControl::Update() {
 		float offset = EaseFunc(progress, 1.9);
 
 		if (progress >= 1) {
-			for (int i = 0; i < 6; i++)
+			for (int i = 0; i < NUM_SERVO; i++)
 				prev_angle[i] = self->servo_angle[i];
 
 			self->curr_saved_idx++;
 			progress = 0;
 		} else {
-			for (int i = 0; i < 6; i++)
+			for (int i = 0; i < NUM_SERVO; i++)
 				self->angle[i] = prev_angle[i] + (self->saved_angles[self->curr_saved_idx][i] - prev_angle[i]) * offset;
-
-			// self->angle[0] = prev_angle[0] + (self->saved_angles[self->curr_saved_idx][0] - prev_angle[0]) * offset;
-			// self->angle[1] = prev_angle[1] + (self->saved_angles[self->curr_saved_idx][1] - prev_angle[1]) * offset;
-			// self->angle[2] = prev_angle[2] + (self->saved_angles[self->curr_saved_idx][2] - prev_angle[2]) * offset;
-			// self->angle[3] = prev_angle[3] + (self->saved_angles[self->curr_saved_idx][3] - prev_angle[3]) * offset;
-			// self->angle[4] = prev_angle[4] + (self->saved_angles[self->curr_saved_idx][4] - prev_angle[4]) * offset;
-			// self->angle[5] = prev_angle[5] + (self->saved_angles[self->curr_saved_idx][5] - prev_angle[5]) * offset;
 
 			progress += progress_iter;
 		}
 	} else {
-		for (int i = 0; i < 6; i++)
+		for (int i = 0; i < NUM_SERVO; i++)
 			prev_angle[i] = self->servo_angle[i];
 	}
 
@@ -171,12 +173,8 @@ void ArmControl::Update() {
 		self->curr_saved_idx = 0;
 	}
 
-	SetServo(0);
-	SetServo(1);
-	SetServo(2);
-	SetServo(3);
-	SetServo(4);
-	SetServo(5);
+	for (int i = 0; i < NUM_SERVO; i++)
+		SetServo(i);
 
 	Transmission();
 }
@@ -200,7 +198,13 @@ void ArmControl::Transmission() {
 
 				if (size) {
 					if (serial_data[0] == 'M') {
-						self->servo_is_at_pos = ((*(float*)(&serial_data[1]) == float(self->servo_angle[0])) && (*(float*)(&serial_data[5]) == float(self->servo_angle[1])) && (*(float*)(&serial_data[9]) == float(self->servo_angle[2])) && (*(float*)(&serial_data[13]) == float(self->servo_angle[3])) && (*(float*)(&serial_data[17]) == self->servo_angle[4]) && (*(float*)(&serial_data[21]) == self->servo_angle[5]));
+						self->servo_is_at_pos = (
+							(*(float*)(&serial_data[1]) == float(self->servo_angle[0])) &&
+							 (*(float*)(&serial_data[5]) == float(self->servo_angle[1])) &&
+							  (*(float*)(&serial_data[9]) == float(self->servo_angle[2])) &&
+							   (*(float*)(&serial_data[13]) == float(self->servo_angle[3])) &&
+							    (*(float*)(&serial_data[17]) == float(self->servo_angle[4])) &&
+								 (*(float*)(&serial_data[21]) == float(self->servo_angle[5])));
 						// std::cout.write(serial_data, size);
 					}
 				} else {

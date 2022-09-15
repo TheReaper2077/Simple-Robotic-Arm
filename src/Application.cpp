@@ -14,7 +14,6 @@ void UpdateApplication() {
 	ArmControl::Render();
 }
 
-
 // #include "Application.h"
 // #include <Lucy/Lucy.h>
 // #include <LucyRE/LucyRE.h>
