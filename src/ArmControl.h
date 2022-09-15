@@ -27,6 +27,19 @@ class ArmControl {
 	glm::vec3 target = { 5, 5, 5 };
 
 	bool enable_ik = false;
+	bool servo_is_at_pos = false;
+
+	enum State {
+		PLAYING,
+		PAUSED,
+		STOPPED,
+	};
+
+	State play_state = PAUSED;
+
+	float saved_angles[700][6];
+	int num_saved = 0;
+	int curr_saved_idx = 0;
 
 public:
 	#define self Instance()
@@ -41,4 +54,6 @@ public:
 	static void Render();
 
 	static bool IsIKEnable();
+	static bool IsServoAtPosition();
+	static float EaseFunc(float x, float t);
 };

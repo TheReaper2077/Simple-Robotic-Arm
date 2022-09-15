@@ -1,4 +1,6 @@
 #include "ArmControl.h"
+#include <chrono>
+#include <time.h>
 #include "InverseKinematics.h"
 #include <iostream>
 #include <Structures/Transform.h>
@@ -22,12 +24,13 @@ void ArmControl::Initialize() {
 	self->angle[0] = 90;
 	self->angle[1] = 90;
 	self->angle[2] = 90;
-	self->angle[3] = 90;
+	self->angle[3] = 180;
+	self->angle[4] = 180;
+	self->angle[5] = 30;
 
 	self->arm_length[0] = 10.5;
 	self->arm_length[1] = 9.8;
-	// self->arm_length[0] = 7.5;
-	// self->arm_length[1] = 7.5;
+	self->arm_length[2] = 12;
 
 	self->init = true;
 }
@@ -51,14 +54,18 @@ void ArmControl::ImGuiLayer() {
 		ImGui::DragFloat("Base Y", &self->angle[0], 0.1f, 0.0f, 180.0f, "%.2f");
 		ImGui::DragFloat("Base X", &self->angle[1], 0.1f, 0.0f, 180.0f, "%.2f");
 		ImGui::DragFloat("Elbow X", &self->angle[2], 0.1f, 0.0f, 180.0f, "%.2f");
-		ImGui::DragFloat("Arm X", &self->angle[3], 0.1f, 0.0f, 180.0f, "%.2f");
-		// ImGui::DragFloat("Arm Y", &transform[2].rotation.y, 0.1f, 0.0f, 0.0f, "%.2f");
+		ImGui::DragFloat("Hand X", &self->angle[3], 0.1f, 0.0f, 180.0f, "%.2f");
+		ImGui::DragFloat("Hand Y", &self->angle[4], 0.1f, 0.0f, 180.0f, "%.2f");
+		ImGui::DragFloat("Gripper", &self->angle[5], 0.1f, 0.0f, 180.0f, "%.2f");
+		// if (ImGui::Button("Close Gripper")) {
+
+		// }
 
 		ImGui::Spacing();
-		
+
 		ImGui::DragFloat("Base Length", &self->arm_length[0], 0.1f, 0.0f, 0.0f, "%.2f");
 		ImGui::DragFloat("Elbow Length", &self->arm_length[1], 0.1f, 0.0f, 0.0f, "%.2f");
-		// ImGui::DragFloat("Hand Length", &transform[2].scale.y, 0.1f, 0.0f, 0.0f, "%.2f");
+		ImGui::DragFloat("Hand Length", &self->arm_length[2], 0.1f, 0.0f, 0.0f, "%.2f");
 
 		ImGui::Spacing();
 		
@@ -68,17 +75,108 @@ void ArmControl::ImGuiLayer() {
 
 		ImGui::Checkbox("Enable IK", &self->enable_ik);
 
+		if (!self->servo_is_at_pos)
+			ImGui::TextColored({ 0, 0, 1, 1 }, "Servo Moving");
+		else
+			ImGui::TextColored({ 0, 1, 0, 1 }, "Servo At Position");
+		
+		if (self->play_state == PLAYING) {
+			ImGui::TextColored({ 0, 1, 0, 1 }, "PLAYING");
+		}
+		if (self->play_state == STOPPED) {
+			ImGui::TextColored({ 1, 0, 0, 1 }, "STOPPED");
+		}
+		if (self->play_state == PAUSED) {
+			ImGui::TextColored({ 1, 1, 0, 1 }, "PAUSED");
+		}
+
+		ImGui::Spacing();
+
+		if (ImGui::Button("PLAY")) {
+			self->play_state = PLAYING;
+		}
+		if (ImGui::Button("PAUS")) {
+			self->play_state = PAUSED;
+		}
+		if (ImGui::Button("STOP")) {
+			self->play_state = STOPPED;
+			self->curr_saved_idx = 0;
+		}
+
+		ImGui::Spacing();
+
+		if (ImGui::Button("SAVE")) {
+			self->play_state = STOPPED;
+
+			int& idx = self->num_saved;
+
+			self->saved_angles[idx][0] = self->angle[0];
+			self->saved_angles[idx][1] = self->angle[1];
+			self->saved_angles[idx][2] = self->angle[2];
+			self->saved_angles[idx][3] = self->angle[3];
+			self->saved_angles[idx][4] = self->angle[4];
+			self->saved_angles[idx][5] = self->angle[5];
+
+			std::cout << idx << '\n';
+
+			idx++;
+		}
+
+		if (ImGui::Button("CLEAR")) {
+			self->num_saved = 0;
+		}
+
 		ImGui::End();
 	}
 }
 
+float progress_len = 500, progress_iter = 1 / progress_len;
+static float prev_angle[6];
+
 void ArmControl::Update() {
 	IKUpdate(self->target);
+
+	static std::clock_t last_time = std::clock();
+	static float progress = 0;
+
+	if (self->play_state == PLAYING && self->num_saved > 0) {
+		float offset = EaseFunc(progress, 1.9);
+
+		if (progress >= 1) {
+			for (int i = 0; i < 6; i++)
+				prev_angle[i] = self->servo_angle[i];
+
+			self->curr_saved_idx++;
+			progress = 0;
+		} else {
+			for (int i = 0; i < 6; i++)
+				self->angle[i] = prev_angle[i] + (self->saved_angles[self->curr_saved_idx][i] - prev_angle[i]) * offset;
+
+			// self->angle[0] = prev_angle[0] + (self->saved_angles[self->curr_saved_idx][0] - prev_angle[0]) * offset;
+			// self->angle[1] = prev_angle[1] + (self->saved_angles[self->curr_saved_idx][1] - prev_angle[1]) * offset;
+			// self->angle[2] = prev_angle[2] + (self->saved_angles[self->curr_saved_idx][2] - prev_angle[2]) * offset;
+			// self->angle[3] = prev_angle[3] + (self->saved_angles[self->curr_saved_idx][3] - prev_angle[3]) * offset;
+			// self->angle[4] = prev_angle[4] + (self->saved_angles[self->curr_saved_idx][4] - prev_angle[4]) * offset;
+			// self->angle[5] = prev_angle[5] + (self->saved_angles[self->curr_saved_idx][5] - prev_angle[5]) * offset;
+
+			progress += progress_iter;
+		}
+	} else {
+		for (int i = 0; i < 6; i++)
+			prev_angle[i] = self->servo_angle[i];
+	}
+
+	if (self->curr_saved_idx >= self->num_saved) {
+		self->play_state = STOPPED;
+		self->curr_saved_idx = 0;
+	}
 
 	SetServo(0);
 	SetServo(1);
 	SetServo(2);
 	SetServo(3);
+	SetServo(4);
+	SetServo(5);
 
 	Transmission();
 }
@@ -101,7 +199,10 @@ void ArmControl::Transmission() {
 				auto size = self->serial_port->readSerialPort(serial_data, MAX_DATA_LENGTH);
 
 				if (size) {
-					std::cout.write(serial_data, size);
+					if (serial_data[0] == 'M') {
+						self->servo_is_at_pos = ((*(float*)(&serial_data[1]) == float(self->servo_angle[0])) && (*(float*)(&serial_data[5]) == float(self->servo_angle[1])) && (*(float*)(&serial_data[9]) == float(self->servo_angle[2])) && (*(float*)(&serial_data[13]) == float(self->servo_angle[3])) && (*(float*)(&serial_data[17]) == self->servo_angle[4]) && (*(float*)(&serial_data[21]) == self->servo_angle[5]));
+						// std::cout.write(serial_data, size);
+					}
 				} else {
 					break;
 				}
@@ -201,7 +302,7 @@ void ArmControl::Render() {
 	{
 		transform[1].rotation.x = (self->angle[2] - 180) + transform[0].rotation.x;
 
-		transform[1].translation = glm::vec3(0, self->arm_length[0], 0) * transform[0].GetRotationQuat();
+		transform[1].translation = transform[0].translation + glm::vec3(0, self->arm_length[0], 0) * transform[0].GetRotationQuat();
 
 		transform[1].scale = { 1, self->arm_length[1], 1 };
 
@@ -212,8 +313,8 @@ void ArmControl::Render() {
 	}
 
 	{
-		transform[2].rotation.x = (self->angle[3] - 90) + transform[1].rotation.x;
-		transform[2].translation = transform[1].translation + glm::vec3(0, self->arm_length[1], 0) * transform[2].GetRotationQuat();
+		transform[2].rotation.x = (self->angle[3] - 180) + transform[1].rotation.x;
+		transform[2].translation = transform[1].translation + glm::vec3(0, self->arm_length[1], 0) * transform[1].GetRotationQuat();
 		transform[2].scale = { 1, self->arm_length[2], 1 };
 
 		lre::SetModel(base * transform[2].GetModel());
@@ -226,4 +327,12 @@ void ArmControl::Render() {
 
 bool ArmControl::IsIKEnable() {
 	return self->enable_ik;
+}
+
+bool ArmControl::IsServoAtPosition() {
+	return self->servo_is_at_pos;
+}
+
+float ArmControl::EaseFunc(float x, float t) {
+	return pow(x, t) / (pow(x, t) + pow(1 - x, t));
 }
